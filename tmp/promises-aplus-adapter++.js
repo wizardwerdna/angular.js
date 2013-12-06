@@ -1,5 +1,3 @@
-var isFunction = function isFunction(value){return typeof value == 'function';}
-
 /**
  * @ngdoc service
  * @name ng.$q
@@ -199,10 +197,6 @@ function qFactory(nextTick, exceptionHandler) {
    * @returns {Deferred} Returns a new instance of deferred.
    */
 
-  // function defer() {
-  //   return new Deferred();
-  // }
-
   var promiseID = 0;
 
   function defer() {
@@ -252,14 +246,14 @@ function qFactory(nextTick, exceptionHandler) {
       if (state.pending) {
         var callbacks = state.pending;
         state.pending = undefined;
-        state.value = ref(val);
+        state.resolved = {value: ref(val)};
 
         if (callbacks.length) {
           nextTick(function() {
             var callback;
             for (var i = 0, ii = callbacks.length; i < ii; i++) {
               callback = callbacks[i];
-              state.value.then(callback[0], callback[1], callback[2]);
+              state.resolved.value.then(callback[0], callback[1], callback[2]);
             }
           });
         }
@@ -320,7 +314,7 @@ function qFactory(nextTick, exceptionHandler) {
       if (state.pending) {
         state.pending.push([wrappedCallback, wrappedErrback, wrappedProgressback]);
       } else {
-        state.value.then(wrappedCallback, wrappedErrback, wrappedProgressback);
+        state.resolved.value.then(wrappedCallback, wrappedErrback, wrappedProgressback);
       }
 
       return result.promise;
@@ -551,6 +545,7 @@ function qFactory(nextTick, exceptionHandler) {
   };
 }
 
+function isFunction(value){return typeof value == 'function';}
 
 var $q = qFactory(process.nextTick, function noopExceptionHandler() {});
 
