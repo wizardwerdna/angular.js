@@ -1,4 +1,4 @@
-
+var isFunction = function isFunction(value){return typeof value == 'function';}
 
 /**
  * @ngdoc service
@@ -187,6 +187,7 @@ function $QProvider() {
  * @returns {object} Promise manager.
  */
 function qFactory(nextTick, exceptionHandler) {
+  'use strict';
 
   /**
    * @ngdoc
@@ -198,139 +199,174 @@ function qFactory(nextTick, exceptionHandler) {
    * @returns {Deferred} Returns a new instance of deferred.
    */
 
-  var defer = function() {
-    var state = {pending: []};
-    // pending = [],
-    var deferred;
+  // function defer() {
+  //   return new Deferred();
+  // }
 
-    deferred = {
+  var promiseID = 0;
 
-      resolve: function(val) {
-        //var state = this.state;
-        if (state.pending) {
-          var callbacks = state.pending;
-          state.pending = undefined;
-          state.value = ref(val);
+  function defer() {
+    var deferObject = {};
+    new Deferred(function(resolve, reject, notify){
+      deferObject.promise = new Promise(this);
+      deferObject.resolve = resolve;
+      deferObject.reject = reject;
+      deferObject.notify = notify;
+    });
+    return deferObject;
+  }
 
-          if (callbacks.length) {
-            nextTick(function() {
-              var callback;
-              for (var i = 0, ii = callbacks.length; i < ii; i++) {
-                callback = callbacks[i];
-                state.value.then(callback[0], callback[1], callback[2]);
-              }
-            });
-          }
-        }
-      },
+  function promise(resolver){
+    new Promise(new Deferred(resolver));
+  }
 
-      reject: function(reason) {
-        deferred.resolve(reject(reason));
-      },
+  function Promise(deferred){
+    this.then = deferred.then.bind(deferred);
+    this.catch = deferred.catch.bind(deferred);
+    this.finally = deferred.finally.bind(deferred);
+  }
 
-      notify: function(progress) {
-        //var state = this.state;
-        if (state.pending) {
-          var callbacks = state.pending;
+  function Deferred(resolver){
+    var self = this;
+    this.state = { pending: [] };
+    this.constructorName = this.constructor.name;
+    this.id = promiseID++;
+    if (typeof resolver === 'function') {
+      try {
+        resolver.call(
+          self,
+          self.resolve.bind(self),
+          self.reject.bind(self),
+          self.notify.bind(self));
+      } catch (e) {
+        self.reject(e);
+      }
+    }
+  }
 
-          if (state.pending.length) {
-            nextTick(function() {
-              var callback;
-              for (var i = 0, ii = callbacks.length; i < ii; i++) {
-                callback = callbacks[i];
-                callback[2](progress);
-              }
-            });
-          }
-        }
-      },
+  Deferred.prototype = {
 
-      promise: {
-        then: function(callback, errback, progressback) {
-          var result = defer();
+    resolve:function(val) {
 
-          var wrappedCallback = function(value) {
-            try {
-              result.resolve((isFunction(callback) ? callback : defaultCallback)(value));
-            } catch(e) {
-              result.reject(e);
-              exceptionHandler(e);
+      var state = this.state;
+      if (state.pending) {
+        var callbacks = state.pending;
+        state.pending = undefined;
+        state.value = ref(val);
+
+        if (callbacks.length) {
+          nextTick(function() {
+            var callback;
+            for (var i = 0, ii = callbacks.length; i < ii; i++) {
+              callback = callbacks[i];
+              state.value.then(callback[0], callback[1], callback[2]);
             }
-          };
-
-          var wrappedErrback = function(reason) {
-            try {
-              result.resolve((isFunction(errback) ? errback : defaultErrback)(reason));
-            } catch(e) {
-              result.reject(e);
-              exceptionHandler(e);
-            }
-          };
-
-          var wrappedProgressback = function(progress) {
-            try {
-              result.notify((isFunction(progressback) ? progressback : defaultCallback)(progress));
-            } catch(e) {
-              exceptionHandler(e);
-            }
-          };
-
-          //state = this.state;
-          if (state.pending) {
-            state.pending.push([wrappedCallback, wrappedErrback, wrappedProgressback]);
-          } else {
-            state.value.then(wrappedCallback, wrappedErrback, wrappedProgressback);
-          }
-
-          return result.promise;
-        },
-
-        "catch": function(callback) {
-          return this.then(null, callback);
-        },
-
-        "finally": function(callback) {
-
-          function makePromise(value, resolved) {
-            var result = defer();
-            if (resolved) {
-              result.resolve(value);
-            } else {
-              result.reject(value);
-            }
-            return result.promise;
-          }
-
-          function handleCallback(value, isResolved) {
-            var callbackOutput = null;
-            try {
-              callbackOutput = (callback ||defaultCallback)();
-            } catch(e) {
-              return makePromise(e, false);
-            }
-            if (callbackOutput && isFunction(callbackOutput.then)) {
-              return callbackOutput.then(function() {
-                return makePromise(value, isResolved);
-              }, function(error) {
-                return makePromise(error, false);
-              });
-            } else {
-              return makePromise(value, isResolved);
-            }
-          }
-
-          return this.then(function(value) {
-            return handleCallback(value, true);
-          }, function(error) {
-            return handleCallback(error, false);
           });
         }
       }
-    };
+    },
 
-    return deferred;
+    reject: function(reason) {
+      this.resolve(reject(reason));
+    },
+
+    notify: function(progress) {
+      var state = this.state;
+      if (state.pending) {
+        var callbacks = state.pending;
+
+        if (state.pending.length) {
+          nextTick(function() {
+            var callback;
+            for (var i = 0, ii = callbacks.length; i < ii; i++) {
+              callback = callbacks[i];
+              callback[2](progress);
+            }
+          });
+        }
+      }
+    },
+
+    then: function(callback, errback, progressback) {
+      var result = defer();
+
+      var wrappedCallback = function(value) {
+        try {
+          result.resolve((isFunction(callback) ? callback : defaultCallback)(value));
+        } catch(e) {
+          result.reject(e);
+          exceptionHandler(e);
+        }
+      };
+
+      var wrappedErrback = function(reason) {
+        try {
+          result.resolve((isFunction(errback) ? errback : defaultErrback)(reason));
+        } catch(e) {
+          result.reject(e);
+          exceptionHandler(e);
+        }
+      };
+
+      var wrappedProgressback = function(progress) {
+        try {
+          result.notify((isFunction(progressback) ? progressback : defaultCallback)(progress));
+        } catch(e) {
+          exceptionHandler(e);
+        }
+      };
+
+      var state = this.state;
+      if (state.pending) {
+        state.pending.push([wrappedCallback, wrappedErrback, wrappedProgressback]);
+      } else {
+        state.value.then(wrappedCallback, wrappedErrback, wrappedProgressback);
+      }
+
+      return result.promise;
+    },
+
+    "catch": function(callback) {
+      return this.then(null, callback);
+    },
+
+    "finally": function(callback) {
+
+      function makePromise(value, resolved) {
+        var result = defer();
+        if (resolved) {
+          result.resolve(value);
+        } else {
+          result.reject(value);
+        }
+        return result.promise;
+      }
+
+      function handleCallback(value, isResolved) {
+        var callbackOutput = null;
+        try {
+          callbackOutput = (callback ||defaultCallback)();
+        } catch(e) {
+          return makePromise(e, false);
+        }
+        if (callbackOutput && isFunction(callbackOutput.then)) {
+          return callbackOutput.then(function() {
+            return makePromise(value, isResolved);
+          }, function(error) {
+            return makePromise(error, false);
+          });
+        } else {
+          return makePromise(value, isResolved);
+        }
+      }
+
+      return this.then(function(value) {
+        return handleCallback(value, true);
+      }, function(error) {
+        return handleCallback(error, false);
+      });
+    }
   };
-
 
   var ref = function(value) {
     if (value && isFunction(value.then)) return value;
@@ -344,7 +380,6 @@ function qFactory(nextTick, exceptionHandler) {
       }
     };
   };
-
 
   /**
    * @ngdoc
@@ -508,6 +543,7 @@ function qFactory(nextTick, exceptionHandler) {
   }
 
   return {
+    promise: promise,
     defer: defer,
     reject: reject,
     when: when,
@@ -515,18 +551,23 @@ function qFactory(nextTick, exceptionHandler) {
   };
 }
 
-var isFunction = function isFunction(value){return typeof value == 'function';}
 
 var $q = qFactory(process.nextTick, function noopExceptionHandler() {});
 
 exports.fulfilled = $q.resolve;
 exports.rejected = $q.reject;
 exports.pending = function () {
-    var deferred = $q.defer();
+  var deferred = $q.defer();
 
-    return {
-        promise: deferred.promise,
-        fulfill: deferred.resolve,
-        reject: deferred.reject
-    };
+  return {
+      promise: deferred.promise,
+      fulfill: deferred.resolve,
+      reject: deferred.reject
+  };
 };
+
+console.log('-------');
+console.log($q.defer());
+console.log('-------');
+console.log($q.promise(function(){}));
+console.log('-------');
