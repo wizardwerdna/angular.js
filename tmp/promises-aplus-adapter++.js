@@ -211,13 +211,13 @@ function qFactory(nextTick, exceptionHandler) {
   }
 
   function promise(resolver){
-    new Promise(new Deferred(resolver));
+    return new Promise(new Deferred(resolver));
   }
 
   function Promise(deferred){
-    this.then = deferred.then.bind(deferred);
-    this.catch = deferred.catch.bind(deferred);
-    this.finally = deferred.finally.bind(deferred);
+    this.then = deferred.then;
+    this.catch = deferred.catch;
+    this.finally = deferred.finally;
   }
 
   function Deferred(resolver){
@@ -225,15 +225,26 @@ function qFactory(nextTick, exceptionHandler) {
     this.state = { pending: [] };
     this.constructorName = this.constructor.name;
     this.id = promiseID++;
-    if (typeof resolver === 'function') {
-      try {
-        resolver.call(
-          self,
-          self.resolve.bind(self),
-          self.reject.bind(self),
-          self.notify.bind(self));
-      } catch (e) {
-        self.reject(e);
+
+    bindExposedFunctions();
+    runResolver();
+
+    function bindExposedFunctions(){
+      self.resolve = self.resolve.bind(self);
+      self.reject = self.reject.bind(self);
+      self.notify = self.notify.bind(self);
+      self.then = self.then.bind(self);
+      self.catch = self.catch.bind(self);
+      self.finally = self.finally.bind(self);
+    } 
+
+    function runResolver(){
+      if (typeof resolver === 'function') {
+        try {
+          resolver.call(self, self.resolve, self.reject, self.notify);
+        } catch (e) {
+          self.reject(e);
+        }
       }
     }
   }
@@ -566,3 +577,41 @@ console.log($q.defer());
 console.log('-------');
 console.log($q.promise(function(){}));
 console.log('-------');
+function resultsFor(p){
+  'use strict';
+  p.then(function(val){
+    console.log('value is', val);
+  }, function(reason){
+    console.log('reason is', reason);
+  });
+}
+function test(){
+  'use strict';
+  var p = $q.promise(function(res){
+    res(23);
+    resultsFor(this);
+  });
+
+  p = $q.promise(function(_, rej){
+    rej('reason');
+    resultsFor(this);
+  });
+
+  p = $q.promise(function(){
+    resultsFor(this);
+    throw 'thrown reason';
+  });
+
+  p = $q.promise(function(res){
+    var self = this;
+    setTimeout(function(){
+      res(123);
+      resultsFor(self);
+    }, 50);
+  });
+}
+test();
+// setTimeout(function(){
+//   'use strict';
+//   process.exit();
+// }, 200);
